@@ -1,0 +1,2 @@
+# war3MapInfoTranslator
+用来图形化转换war3地图信息的txt和csv的神奇妙妙工具
