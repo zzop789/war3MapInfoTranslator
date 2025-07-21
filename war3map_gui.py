@@ -8,16 +8,19 @@ War3Map数据转换工具 - 图形化界面
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import os
+import re
 import threading
 from pathlib import Path
 from typing import List, Dict
 import sys
+import re
 
 # 导入转换器核心模块
 try:
     from war3map_converter import War3MapConverter, convert_txt_to_csv, convert_csv_to_txt, merge_txt_files, auto_merge_txt_pairs
+    from war3map_w3i_converter import War3MapW3IConverter, convert_w3i_txt_to_csv, convert_csv_to_w3i_txt
 except ImportError:
-    messagebox.showerror("错误", "无法导入war3map_converter模块，请确保文件存在！")
+    messagebox.showerror("错误", "无法导入转换器模块，请确保文件存在！")
     sys.exit(1)
 
 class War3MapConverterGUI:
@@ -242,51 +245,59 @@ class War3MapConverterGUI:
                     try:
                         self.log(f"正在转换: {os.path.basename(txt_file)}")
                         
-                        converter = War3MapConverter()
+                        # 检测文件类型并选择合适的转换器
+                        file_type = self.detect_file_type(txt_file)
+                        converter = self.get_appropriate_converter(file_type)
+                        
+                        self.log(f"  检测文件类型: {file_type}")
+                        
                         result = converter.txt_to_csv(txt_file, output_dir)
                         
                         if result:
-                            for file_type, file_path in result.items():
-                                self.log(f"  生成 {file_type}: {os.path.basename(file_path)}")
+                            for file_type_key, file_path in result.items():
+                                self.log(f"  生成 {file_type_key}: {os.path.basename(file_path)}")
                             success_count += 1
                         
                         # 显示统计信息
                         stats = converter.get_statistics()
-                        self.log(f"  版本: {stats['version']}, 原生: {stats['origin_count']}, 自定义: {stats['custom_count']}")
-                        
-                        # 显示字段信息
-                        field_info = converter.get_field_info()
-                        origin_fields = field_info['origin_fields']
-                        custom_fields = field_info['custom_fields']
-                        all_fields = field_info['all_fields']
-                        
-                        if all_fields:
-                            self.log(f"  发现字段总数: {len(all_fields)}")
-                            if origin_fields:
-                                self.log(f"  ORIGIN字段数: {len(origin_fields)}")
-                            if custom_fields:
-                                self.log(f"  CUSTOM字段数: {len(custom_fields)}")
+                        if file_type == 'w3i':
+                            self.log(f"  版本: {stats['version']}, 条目数: {stats['total_count']}")
+                        else:
+                            self.log(f"  版本: {stats['version']}, 原生: {stats['origin_count']}, 自定义: {stats['custom_count']}")
                             
-                            # 显示字段差异
-                            if origin_fields and custom_fields:
-                                common = origin_fields & custom_fields
-                                origin_only = origin_fields - custom_fields
-                                custom_only = custom_fields - origin_fields
+                            # 显示字段信息
+                            field_info = converter.get_field_info()
+                            origin_fields = field_info['origin_fields']
+                            custom_fields = field_info['custom_fields']
+                            all_fields = field_info['all_fields']
+                            
+                            if all_fields:
+                                self.log(f"  发现字段总数: {len(all_fields)}")
+                                if origin_fields:
+                                    self.log(f"  ORIGIN字段数: {len(origin_fields)}")
+                                if custom_fields:
+                                    self.log(f"  CUSTOM字段数: {len(custom_fields)}")
                                 
-                                self.log(f"  共同字段: {len(common)}个")
-                                if origin_only:
-                                    self.log(f"  仅ORIGIN有: {len(origin_only)}个")
-                                if custom_only:
-                                    self.log(f"  仅CUSTOM有: {len(custom_only)}个")
-                            
-                            # 显示部分字段名称
-                            if len(all_fields) <= 20:
-                                self.log(f"  所有字段: {sorted(list(all_fields))}")
-                            else:
-                                sample_fields = sorted(list(all_fields))[:15]
-                                self.log(f"  字段示例: {sample_fields}... (共{len(all_fields)}个)")
-                            
-                            self.log(f"  详细字段信息已在控制台输出")
+                                # 显示字段差异
+                                if origin_fields and custom_fields:
+                                    common = origin_fields & custom_fields
+                                    origin_only = origin_fields - custom_fields
+                                    custom_only = custom_fields - origin_fields
+                                    
+                                    self.log(f"  共同字段: {len(common)}个")
+                                    if origin_only:
+                                        self.log(f"  仅ORIGIN有: {len(origin_only)}个")
+                                    if custom_only:
+                                        self.log(f"  仅CUSTOM有: {len(custom_only)}个")
+                                
+                                # 显示部分字段名称
+                                if len(all_fields) <= 20:
+                                    self.log(f"  所有字段: {sorted(list(all_fields))}")
+                                else:
+                                    sample_fields = sorted(list(all_fields))[:15]
+                                    self.log(f"  字段示例: {sample_fields}... (共{len(all_fields)}个)")
+                                
+                                self.log(f"  详细字段信息已在控制台输出")
                         
                     except Exception as e:
                         self.log(f"  转换失败: {str(e)}")
@@ -301,7 +312,16 @@ class War3MapConverterGUI:
                         output_file = os.path.join(output_dir, f"{group_name}.txt")
                         self.log(f"正在转换组: {group_name}")
                         
-                        result = convert_csv_to_txt(csv_files, output_file)
+                        # 根据输出文件名检测文件类型
+                        file_type = self.detect_file_type(output_file)
+                        self.log(f"  检测文件类型: {file_type}")
+                        
+                        # 选择合适的转换函数
+                        if file_type == 'w3i':
+                            result = convert_csv_to_w3i_txt(csv_files, output_file)
+                        else:
+                            result = convert_csv_to_txt(csv_files, output_file)
+                        
                         self.log(f"  生成: {os.path.basename(result)}")
                         success_count += 1
                         
@@ -396,7 +416,53 @@ class War3MapConverterGUI:
     def clear_log(self):
         """清除日志"""
         self.log_text.delete(1.0, tk.END)
-
+    
+    def detect_file_type(self, file_path: str) -> str:
+        """
+        根据文件名检测文件类型
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            文件类型: 'w3i', 'standard', 'unknown'
+        """
+        file_name = os.path.basename(file_path).lower()
+        
+        # 检查是否为war3map格式
+        if file_name.startswith('war3map.w3') and file_name.endswith('.txt'):
+            # 提取后缀
+            suffix_match = re.search(r'war3map\.w3([a-z])\.txt$', file_name)
+            if suffix_match:
+                suffix = suffix_match.group(1)
+                
+                # w3i使用特殊格式
+                if suffix == 'i':
+                    return 'w3i'
+                # 其他后缀(a,b,d,h,q,t,u)使用标准格式
+                elif suffix in ['a', 'b', 'd', 'h', 'q', 't', 'u']:
+                    return 'standard'
+        
+        return 'unknown'
+    
+    def get_appropriate_converter(self, file_type: str):
+        """
+        根据文件类型获取适当的转换器
+        
+        Args:
+            file_type: 文件类型
+            
+        Returns:
+            转换器实例
+        """
+        if file_type == 'w3i':
+            return War3MapW3IConverter()
+        elif file_type == 'standard':
+            return War3MapConverter()
+        else:
+            # 默认使用标准转换器
+            return War3MapConverter()
+        
 def main():
     """主函数"""
     root = tk.Tk()

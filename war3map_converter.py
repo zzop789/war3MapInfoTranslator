@@ -211,38 +211,67 @@ class War3MapConverter:
         return data
     
     def _parse_entry_fields(self, content: str) -> Dict[str, str]:
-        """解析条目字段"""
+        """更严谨地解析字段"""
         fields = {}
-        
-        # 按行处理
-        lines = content.split('\n')
-        for line in lines:
-            line = line.strip()
-            # 跳过空行和大括号行
-            if not line or line.startswith('}') or line.startswith('{'):
+        pos = 0
+        length = len(content)
+
+        while pos < length:
+            # 匹配字段名
+            field_match = re.match(r'\s*([a-zA-Z0-9_]+)\s*=\s*', content[pos:])
+            if not field_match:
+                pos += 1
                 continue
-                
-            # 查找 字段名=值 的模式
-            if '=' in line:
-                parts = line.split('=', 1)  # 只分割第一个=号
-                if len(parts) == 2:
-                    field_name = parts[0].strip()
-                    field_value = parts[1].strip()
-                    
-                    # 去掉末尾的逗号
-                    if field_value.endswith(','):
-                        field_value = field_value[:-1]
-                    
-                    # 保存字段
-                    if field_name:
-                        # 处理重复字段：用 "おなに" 连接多个值
-                        if field_name in fields:
-                            fields[field_name] = fields[field_name] + "おなに" + field_value
-                        else:
-                            fields[field_name] = field_value
-        
+
+            field_name = field_match.group(1)
+            pos += field_match.end()
+
+            # 判断值类型
+            if pos >= length:
+                break
+
+            if content[pos] == '"':
+                # 字符串值
+                end_pos = pos + 1
+                while end_pos < length and content[end_pos] != '"':
+                    if content[end_pos] == '\\':  # 跳过转义字符
+                        end_pos += 1
+                    end_pos += 1
+                end_pos += 1  # 包含右引号
+                field_value = content[pos:end_pos]
+                pos = end_pos
+            elif content[pos] == '{':
+                # 嵌套表结构
+                brace_count = 1
+                end_pos = pos + 1
+                while end_pos < length and brace_count > 0:
+                    if content[end_pos] == '{':
+                        brace_count += 1
+                    elif content[end_pos] == '}':
+                        brace_count -= 1
+                    end_pos += 1
+                field_value = content[pos:end_pos]
+                pos = end_pos
+            else:
+                # 普通标识符或数字，直到逗号或换行
+                end_pos = pos
+                while end_pos < length and content[end_pos] not in [',', '\n']:
+                    end_pos += 1
+                field_value = content[pos:end_pos].strip()
+                pos = end_pos
+
+            # 去掉末尾逗号和空白
+            while pos < length and content[pos] in [',', '\n', '\r', ' ']:
+                pos += 1
+
+            # 合并重复字段
+            if field_name in fields:
+                fields[field_name] = fields[field_name] + "おなに" + field_value
+            else:
+                fields[field_name] = field_value
+
         return fields
-    
+
     def _read_file_with_encoding(self, file_path: str) -> str:
         """使用多种编码尝试读取文件"""
         encodings = ['utf-8', 'gbk', 'utf-8-sig', 'latin1']
