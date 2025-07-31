@@ -59,3 +59,10 @@ Thumbs.db
 *.tmp
 *.temp
 *.bak
+
+# 输出文件夹
+outputs/
+outputs_new/
+test_*/
+debug_*/
+cmp_folder/

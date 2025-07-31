@@ -211,14 +211,21 @@ class War3MapConverter:
         return data
     
     def _parse_entry_fields(self, content: str) -> Dict[str, str]:
-        """更严谨地解析字段"""
+        """更严谨地解析字段 - 修复字段识别问题"""
         fields = {}
         pos = 0
         length = len(content)
 
         while pos < length:
-            # 匹配字段名
-            field_match = re.match(r'\s*([a-zA-Z0-9_]+)\s*=\s*', content[pos:])
+            # 跳过空白字符
+            while pos < length and content[pos] in [' ', '\t', '\n', '\r']:
+                pos += 1
+            
+            if pos >= length:
+                break
+            
+            # 匹配字段名：只有在行首或大括号后的字母开头才是字段名
+            field_match = re.match(r'([a-zA-Z][a-zA-Z0-9_]*)\s*=\s*', content[pos:])
             if not field_match:
                 pos += 1
                 continue
@@ -226,7 +233,7 @@ class War3MapConverter:
             field_name = field_match.group(1)
             pos += field_match.end()
 
-            # 判断值类型
+            # 判断值类型并提取完整的字段值
             if pos >= length:
                 break
 
@@ -237,34 +244,60 @@ class War3MapConverter:
                     if content[end_pos] == '\\':  # 跳过转义字符
                         end_pos += 1
                     end_pos += 1
-                end_pos += 1  # 包含右引号
+                if end_pos < length:
+                    end_pos += 1  # 包含右引号
                 field_value = content[pos:end_pos]
                 pos = end_pos
             elif content[pos] == '{':
-                # 嵌套表结构
+                # 嵌套表结构 - 找到完整的大括号匹配
                 brace_count = 1
                 end_pos = pos + 1
                 while end_pos < length and brace_count > 0:
-                    if content[end_pos] == '{':
+                    if content[end_pos] == '"':
+                        # 跳过字符串内容，避免字符串内的大括号干扰
+                        end_pos += 1
+                        while end_pos < length and content[end_pos] != '"':
+                            if content[end_pos] == '\\':  # 跳过转义字符
+                                end_pos += 1
+                            end_pos += 1
+                        if end_pos < length:
+                            end_pos += 1  # 跳过结束引号
+                    elif content[end_pos] == '{':
                         brace_count += 1
+                        end_pos += 1
                     elif content[end_pos] == '}':
                         brace_count -= 1
-                    end_pos += 1
+                        end_pos += 1
+                    else:
+                        end_pos += 1
                 field_value = content[pos:end_pos]
                 pos = end_pos
             else:
-                # 普通标识符或数字，直到逗号或换行
+                # 普通标识符或数字 - 直到逗号、换行或下一个字段
                 end_pos = pos
-                while end_pos < length and content[end_pos] not in [',', '\n']:
-                    end_pos += 1
+                while end_pos < length:
+                    char = content[end_pos]
+                    if char == ',':
+                        break
+                    elif char == '\n':
+                        # 检查下一行是否是新字段（字母开头后跟=）
+                        next_line_start = end_pos + 1
+                        while next_line_start < length and content[next_line_start] in [' ', '\t']:
+                            next_line_start += 1
+                        if next_line_start < length and re.match(r'[a-zA-Z][a-zA-Z0-9_]*\s*=', content[next_line_start:]):
+                            break
+                        end_pos += 1
+                    else:
+                        end_pos += 1
+                
                 field_value = content[pos:end_pos].strip()
                 pos = end_pos
 
-            # 去掉末尾逗号和空白
-            while pos < length and content[pos] in [',', '\n', '\r', ' ']:
+            # 跳过结尾的逗号和空白
+            while pos < length and content[pos] in [',', '\n', '\r', ' ', '\t']:
                 pos += 1
 
-            # 合并重复字段
+            # 处理重复字段（使用分隔符合并）
             if field_name in fields:
                 fields[field_name] = fields[field_name] + "おなに" + field_value
             else:
@@ -431,14 +464,22 @@ class War3MapConverter:
         if not field_value:
             return '""'
         
+        # 如果是嵌套表格式，直接返回（不添加外层引号）
+        if field_value.strip().startswith('{') and field_value.strip().endswith('}'):
+            return field_value.strip()
+        
         # 判断是否为数字
         try:
             float(field_value)
             return field_value
         except ValueError:
-            # 去掉可能存在的额外引号并重新加引号
-            cleaned_value = field_value.strip('"')
-            return f'"{cleaned_value}"'
+            # 字符串值：保持原有的引号结构
+            # 如果字段值已经包含引号，直接返回；否则添加引号
+            if (field_value.startswith('"') and field_value.endswith('"')) or \
+               (field_value.startswith("'") and field_value.endswith("'")):
+                return field_value
+            else:
+                return f'"{field_value}"'
     
     def _split_id(self, full_id: str) -> Tuple[str, str]:
         """分离ID和后缀"""
