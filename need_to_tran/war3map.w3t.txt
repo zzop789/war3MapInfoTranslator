@@ -2533,6 +2533,15 @@ return
 			ipow=1,
 			ifil="war3mapImported\\treasurechest_Standonly.mdl",
 		},
+		I087_ches={
+			icla="Permanent",
+			unam="小魔晶",
+			ides="德堪出品|nwww.09game.com",
+			iico="ReplaceableTextures\\CommandButtons\\BTNOmniscienceEye.blp",
+			iusa=1,
+			ipow=1,
+			ifil="war3mapImported\\treasurechest_Standonly.mdl",
+		},
 		IAZU_ches={
 			iabi="ATZU",
 			icid="ATZU",
