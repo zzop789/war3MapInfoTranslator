@@ -357,16 +357,30 @@ class War3MapConverter:
                 writer.writerow(row)
     
     def _clean_value_for_csv(self, value: str) -> str:
-        """清理字段值，移除可能破坏CSV结构的字符"""
+        """清理字段值，使用转义保留格式信息但确保CSV单行显示"""
         if not value:
             return ''
         
-        # 移除换行符、制表符，压缩多余空格
-        cleaned = value.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
-        # 压缩多个连续空格为单个空格
-        cleaned = ' '.join(cleaned.split())
+        # 转义换行符和制表符，保留格式信息但确保CSV可读性
+        cleaned = value.replace('\\', '\\\\')  # 先转义反斜杠
+        cleaned = cleaned.replace('\n', '\\n')  # 换行符转义
+        cleaned = cleaned.replace('\r', '\\r')  # 回车符转义  
+        cleaned = cleaned.replace('\t', '\\t')  # 制表符转义
         
         return cleaned
+    
+    def _unescape_value_from_csv(self, value: str) -> str:
+        """反转义CSV字段值，还原原始格式"""
+        if not value:
+            return ''
+        
+        # 反转义格式字符，顺序很重要
+        unescaped = value.replace('\\n', '\n')  # 还原换行符
+        unescaped = unescaped.replace('\\r', '\r')  # 还原回车符
+        unescaped = unescaped.replace('\\t', '\t')  # 还原制表符
+        unescaped = unescaped.replace('\\\\', '\\')  # 最后还原反斜杠
+        
+        return unescaped
     
     def _read_csv(self, csv_file: str) -> Dict[str, Dict[str, str]]:
         """读取CSV文件"""
@@ -400,7 +414,9 @@ class War3MapConverter:
                     fields = {}
                     for i, header in enumerate(headers[2:], 2):  # 跳过ID和Suffix
                         if i < len(row) and row[i].strip():
-                            fields[header] = row[i].strip()
+                            # 反转义字段值，还原原始格式
+                            field_value = self._unescape_value_from_csv(row[i].strip())
+                            fields[header] = field_value
                     
                     if fields:  # 只有在有字段数据时才添加
                         data[full_id] = fields
